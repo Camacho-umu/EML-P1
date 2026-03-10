@@ -35,17 +35,24 @@ class EpsilonGreedy(Algorithm):
         """
         Selecciona un brazo basado en la política epsilon-greedy.
 
+        Si existen brazos que aún no han sido seleccionados (counts[i] == 0),
+        se selecciona uno de ellos aleatoriamente. Esto garantiza que, incluso
+        con epsilon=0, cada brazo se prueba al menos una vez antes de explotar.
+
         :return: índice del brazo seleccionado.
         """
 
-        # Observa que para para epsilon=0 solo selecciona un brazo y no hace un primer recorrido por todos ellos.
-        # ¿Podrías modificar el código para que funcione correctamente para epsilon=0?
+        # Fase de inicialización: probar brazos que nunca se han seleccionado
+        unexplored = np.where(self.counts == 0)[0]
+        if len(unexplored) > 0:
+            return np.random.choice(unexplored)
 
         if np.random.random() < self.epsilon:
-            # Selecciona un brazo al azar
+            # Exploración: selecciona un brazo al azar
             chosen_arm = np.random.choice(self.k)
         else:
-            # Selecciona el brazo con la recompensa promedio estimada más alta
+            # Explotación: selecciona el brazo con la recompensa promedio estimada más alta
+            # En caso de empate, argmax devuelve el primer índice (determinista)
             chosen_arm = np.argmax(self.values)
 
         return chosen_arm

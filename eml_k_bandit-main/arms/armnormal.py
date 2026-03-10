@@ -70,14 +70,13 @@ class ArmNormal(Arm):
         assert k > 0, "El número de brazos k debe ser mayor que 0."
         assert mu_min < mu_max, "El valor de mu_min debe ser menor que mu_max."
 
-        # Generar k- valores únicos de mu con decimales
-        mu_values = set()
+        # Generar k valores únicos de mu con decimales (usando lista para reproducibilidad)
+        mu_values = []
         while len(mu_values) < k:
-            mu = np.random.uniform(mu_min, mu_max)
-            mu = round(mu, 2)
-            mu_values.add(mu)
+            mu = round(np.random.uniform(mu_min, mu_max), 2)
+            if mu not in mu_values:
+                mu_values.append(mu)
 
-        mu_values = list(mu_values)
         sigma = 1.0
 
         arms = [ArmNormal(mu, sigma) for mu in mu_values]

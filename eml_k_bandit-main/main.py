@@ -20,7 +20,7 @@ import numpy as np
 
 from algorithms import Algorithm, EpsilonGreedy
 from arms import ArmNormal, Bandit
-from plotting import plot_average_rewards, plot_optimal_selections
+from plotting import plot_average_rewards, plot_optimal_selections, plot_regret, plot_arm_statistics
 
 
 def run_experiment(bandit: Bandit, algorithms: List[Algorithm], steps: int, runs: int):
@@ -31,33 +31,36 @@ def run_experiment(bandit: Bandit, algorithms: List[Algorithm], steps: int, runs
     :param algorithms: Lista de instancias de algoritmos a comparar.
     :param steps: Número de pasos de tiempo por ejecución.
     :param runs: Número de ejecuciones independientes.
-    :return: Tuple de tres elementos: recompensas promedio, porcentaje de selecciones óptimas, y estadísticas de brazos.
-    :rtype: Tuple of (np.ndarray, np.ndarray, list)
+    :return: Tuple de cuatro elementos:
+        - rewards: recompensas promedio (algoritmos x pasos)
+        - optimal_selections: porcentaje de selecciones óptimas (algoritmos x pasos)
+        - regret_accumulated: regret acumulado promedio (algoritmos x pasos)
+        - arm_stats: lista de diccionarios con estadísticas por brazo para cada algoritmo
+    :rtype: Tuple of (np.ndarray, np.ndarray, np.ndarray, list)
     """
 
     k = bandit.k
     optimal_arm = bandit.optimal_arm
+    q_star = bandit.get_expected_value(optimal_arm)  # Recompensa esperada del brazo óptimo
 
-    # Inicializar matrices para recompensas y selecciones óptimas
+    # Inicializar matrices para recompensas, selecciones óptimas y regret
     rewards = np.zeros((len(algorithms), steps))
     optimal_selections = np.zeros((len(algorithms), steps))
+    regret_accumulated = np.zeros((len(algorithms), steps))
 
+    # Estadísticas por brazo: acumulamos conteos y recompensas por brazo/algoritmo
+    arm_total_counts = np.zeros((len(algorithms), k))
+    arm_total_rewards = np.zeros((len(algorithms), k))
 
     for run in range(runs):
         # Crear una nueva instancia del bandit para cada ejecución
         current_bandit = Bandit(arms=bandit.arms)
 
-        # Obtener la recompensa esperada óptima
-        q_max = current_bandit.get_expected_value(current_bandit.optimal_arm)
-
         for algo in algorithms:
             algo.reset()
 
-        # Inicializar recompensas acumuladas por algoritmo para esta ejecución
-        total_rewards_per_algo = np.zeros(len(algorithms))  # Para análisis por rechazo
-
-        # Inicializar recompensas acumuladas por algoritmo para esta ejecución
-        # cumulative_rewards_per_algo = np.zeros(len(algorithms))
+        # Regret acumulado por algoritmo en esta ejecución
+        cumulative_regret = np.zeros(len(algorithms))
 
         for step in range(steps):
             for idx, algo in enumerate(algorithms):
@@ -66,16 +69,39 @@ def run_experiment(bandit: Bandit, algorithms: List[Algorithm], steps: int, runs
                 algo.update(chosen_arm, reward)
 
                 rewards[idx, step] += reward
-                total_rewards_per_algo[idx] += reward
+
+                # Regret instantáneo: diferencia entre la recompensa esperada óptima
+                # y la recompensa esperada del brazo elegido
+                instant_regret = q_star - current_bandit.get_expected_value(chosen_arm)
+                cumulative_regret[idx] += instant_regret
+                regret_accumulated[idx, step] += cumulative_regret[idx]
 
                 if chosen_arm == optimal_arm:
                     optimal_selections[idx, step] += 1
 
-    # Promediar las recompensas y el regret sobre todas las ejecuciones
+        # Acumular estadísticas por brazo de la última ejecución
+        for idx, algo in enumerate(algorithms):
+            arm_total_counts[idx] += algo.counts
+            arm_total_rewards[idx] += algo.values * algo.counts  # recompensa total = media * conteo
+
+    # Promediar sobre todas las ejecuciones
     rewards /= runs
     optimal_selections = (optimal_selections / runs) * 100
+    regret_accumulated /= runs
 
-    return rewards, optimal_selections
+    # Construir estadísticas por brazo promediadas
+    arm_stats = []
+    for idx in range(len(algorithms)):
+        avg_counts = arm_total_counts[idx] / runs
+        avg_rewards = np.divide(arm_total_rewards[idx], arm_total_counts[idx],
+                                out=np.zeros(k), where=arm_total_counts[idx] != 0)
+        arm_stats.append({
+            'counts': avg_counts,
+            'avg_rewards': avg_rewards,
+            'optimal_arm': optimal_arm
+        })
+
+    return rewards, optimal_selections, regret_accumulated, arm_stats
 
 
 
@@ -102,12 +128,13 @@ def main():
     algorithms = [EpsilonGreedy(k=k, epsilon=0), EpsilonGreedy(k=k, epsilon=0.01), EpsilonGreedy(k=k, epsilon=0.1)]
 
     # Ejecutar el experimento y obtener las recompensas promedio y selecciones óptimas
-    rewards, optimal_selections = run_experiment(bandit, algorithms, steps, runs)
+    rewards, optimal_selections, regret_accumulated, arm_stats = run_experiment(bandit, algorithms, steps, runs)
 
     # Generar las gráficas utilizando las funciones externas
     plot_average_rewards(steps, rewards, algorithms)
-
-    # plot_optimal_selections(steps, optimal_selections, algorithms)
+    plot_optimal_selections(steps, optimal_selections, algorithms)
+    plot_regret(steps, regret_accumulated, algorithms)
+    plot_arm_statistics(arm_stats, algorithms)
 
 
 
